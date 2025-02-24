@@ -16,7 +16,7 @@ class StoutPixilizer:
         self.root.title("*New - Stout Pixilizer")
 
         #logo setup
-        icon_path = "assets/logo.png"
+        icon_path = resource_path("assets/logo.png")
         icon_image = icon = Image.open(icon_path).resize((64, 64), Image.LANCZOS) 
         icon_photo = ImageTk.PhotoImage(icon_image)
 
