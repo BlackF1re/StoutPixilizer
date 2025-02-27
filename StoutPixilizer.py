@@ -1,13 +1,21 @@
 import os
 import sys
 import tkinter as tk
-from tkinter import filedialog, messagebox, PhotoImage
+from tkinter import filedialog, messagebox
 from PIL import Image, ImageTk
 
+# Константы
+CELL_SIZE = 10
+COLS = 96
+ROWS = 16
+INITIAL_SCALE_FACTOR = 1.5
+ICON_SIZE = (64, 64)
+BUTTON_ICON_SIZE = (24, 24)
+WINDOW_GEOMETRY = "1920x480"
 
 def resource_path(relative_path):
     """ Возвращает путь к файлу (учитывает упаковку в .exe) """
-    if hasattr(sys, '_MEIPASS'):  #если из .exe
+    if hasattr(sys, '_MEIPASS'):
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.join(os.path.abspath(os.path.dirname(__file__)), relative_path)
 
@@ -43,73 +51,67 @@ class StoutPixilizer:
 
         #logo setup
         icon_path = resource_path("assets/logo.png")
-        icon_image = icon = Image.open(icon_path).resize((64, 64), Image.LANCZOS) 
+        icon_image = Image.open(icon_path).resize(ICON_SIZE, Image.LANCZOS)
         icon_photo = ImageTk.PhotoImage(icon_image)
-
         root.iconphoto(False, icon_photo)
 
-
-        self.cell_size = 10
-        self.cols = 96
-        self.rows = 16
-        self.scale_factor = 1.5
+        self.cell_size = CELL_SIZE
+        self.cols = COLS
+        self.rows = ROWS
+        self.scale_factor = INITIAL_SCALE_FACTOR
         self.offset_x = 0
         self.offset_y = 0
         self.dragging = False
         self.drag_start_x = 0
         self.drag_start_y = 0
-        self.history = []  #История изменений
-        self.history_index = -1  #Индекс текущего состояния в истории
+        self.history = []
+        self.history_index = -1
         self.file_path = None
         self.unsaved_changes = False
 
-        button_frame = tk.Frame(root)
+        self.setup_ui()
+        self.bind_events()
+
+        self.show_ruler = False
+
+        self.draw_grid()
+        self.update_canvas_size()
+        self.root.geometry(WINDOW_GEOMETRY)
+
+    def setup_ui(self):
+        button_frame = tk.Frame(self.root)
         button_frame.pack(side=tk.TOP, fill=tk.X, padx=10)
 
         self.icons = {
-            "save": ImageTk.PhotoImage(Image.open(resource_path("assets/save_image.png")).resize((24, 24))),
-            "open": ImageTk.PhotoImage(Image.open(resource_path("assets/open_image.png")).resize((24, 24))),
-            "clear": ImageTk.PhotoImage(Image.open(resource_path("assets/clear_canvas.png")).resize((24, 24))),
-            "close": ImageTk.PhotoImage(Image.open(resource_path("assets/close_file.png")).resize((24, 24))),
-            "center": ImageTk.PhotoImage(Image.open(resource_path("assets/center_grid.png")).resize((24, 24))),
-            "ruler": ImageTk.PhotoImage(Image.open(resource_path("assets/toggle_ruler.png")).resize((24, 24))),
+            "save": ImageTk.PhotoImage(Image.open(resource_path("assets/save_image.png")).resize(BUTTON_ICON_SIZE)),
+            "open": ImageTk.PhotoImage(Image.open(resource_path("assets/open_image.png")).resize(BUTTON_ICON_SIZE)),
+            "clear": ImageTk.PhotoImage(Image.open(resource_path("assets/clear_canvas.png")).resize(BUTTON_ICON_SIZE)),
+            "close": ImageTk.PhotoImage(Image.open(resource_path("assets/close_file.png")).resize(BUTTON_ICON_SIZE)),
+            "center": ImageTk.PhotoImage(Image.open(resource_path("assets/center_grid.png")).resize(BUTTON_ICON_SIZE)),
+            "ruler": ImageTk.PhotoImage(Image.open(resource_path("assets/toggle_ruler.png")).resize(BUTTON_ICON_SIZE)),
         }
 
-        self.buttons = {}
-        save_button = tk.Button(button_frame, image=self.icons["save"], command=self.save_image, width=32, height=32, compound=tk.CENTER)
-        save_button.pack(side=tk.LEFT, padx=2, pady=5)
-        ToolTip(save_button, "Save")
+        self.create_button(button_frame, "save", self.save_image, "Save")
+        self.create_button(button_frame, "open", self.open_image, "Open")
+        self.create_button(button_frame, "clear", self.clear_canvas, "Clear")
+        self.create_button(button_frame, "close", self.close_file, "Close")
+        self.create_button(button_frame, "center", self.center_grid, "Center")
+        self.create_button(button_frame, "ruler", self.toggle_ruler, "Toggle Ruler")
 
-        open_button = tk.Button(button_frame, image=self.icons["open"], command=self.open_image, width=32, height=32, compound=tk.CENTER)
-        open_button.pack(side=tk.LEFT, padx=2, pady=5)
-        ToolTip(open_button, "Open")
-
-        clear_button = tk.Button(button_frame, image=self.icons["clear"], command=self.clear_canvas, width=32, height=32, compound=tk.CENTER)
-        clear_button.pack(side=tk.LEFT, padx=2, pady=5)
-        ToolTip(clear_button, "Clear")
-
-        close_button = tk.Button(button_frame, image=self.icons["close"], command=self.close_file, width=32, height=32, compound=tk.CENTER)
-        close_button.pack(side=tk.LEFT, padx=2, pady=5)
-        ToolTip(close_button, "Close")
-
-        center_button = tk.Button(button_frame, image=self.icons["center"], command=self.center_grid, width=32, height=32, compound=tk.CENTER)
-        center_button.pack(side=tk.LEFT, padx=2, pady=5)
-        ToolTip(center_button, "Center")
-
-        ruler_button = tk.Button(button_frame, image=self.icons["ruler"], command=self.toggle_ruler, width=32, height=32, compound=tk.CENTER)
-        ruler_button.pack(side=tk.LEFT, padx=2, pady=5)
-        ToolTip(ruler_button, "Toggle Ruler")
-
-        #Холст, привязки и отступы
-        self.canvas_frame = tk.Frame(root)
+        self.canvas_frame = tk.Frame(self.root)
         self.canvas_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
-        
+
         self.canvas = tk.Canvas(self.canvas_frame, bg='black')
         self.canvas.pack(fill=tk.BOTH, expand=True)
 
         self.grid = [[0 for _ in range(self.cols)] for _ in range(self.rows)]
 
-        #Бинды
+    def create_button(self, frame, icon_key, command, tooltip_text):
+        button = tk.Button(frame, image=self.icons[icon_key], command=command, width=32, height=32, compound=tk.CENTER)
+        button.pack(side=tk.LEFT, padx=2, pady=5)
+        ToolTip(button, tooltip_text)
+
+    def bind_events(self):
         self.canvas.bind("<Button-1>", self.paint_pixel)
         self.canvas.bind("<Button-3>", self.erase_pixel)
         self.canvas.bind("<B1-Motion>", self.paint_pixel)
@@ -122,12 +124,6 @@ class StoutPixilizer:
         self.root.bind("<Control-y>", self.redo)
         self.root.bind("<Control-s>", self.save_image)
 
-        self.show_ruler = False
-
-        self.draw_grid()
-        self.update_canvas_size()
-        self.root.geometry("1920x480")
-    
     def draw_grid(self):
         self.canvas.delete("all")
         for y in range(self.rows):
@@ -153,7 +149,7 @@ class StoutPixilizer:
             self.grid[y][x] = 1
             self.save_state()
             self.draw_grid()
-    
+
     def erase_pixel(self, event):
         x = int((event.x - self.offset_x) // (self.cell_size * self.scale_factor))
         y = int((event.y - self.offset_y) // (self.cell_size * self.scale_factor))
@@ -207,17 +203,17 @@ class StoutPixilizer:
             messagebox.showinfo("Сохранено", "Изображение успешно сохранено!")
         except Exception as e:
             messagebox.showerror("Ошибка", f"Не удалось сохранить файл: {e}")
-    
+
     def open_image(self):
         if self.unsaved_changes:
             result = messagebox.askyesnocancel(
                 "Сохранить изменения?", "У вас есть несохраненные изменения. Сохранить их?"
             )
             if result is None:
-                return  #Отмена
-            if result:  #Да
+                return
+            if result:
                 self.save_image()
-        
+
         file_path = filedialog.askopenfilename(
             filetypes=[("Bitmap Image", "*.bmp"),
                      ("PNG Image", "*.png"),
@@ -249,10 +245,10 @@ class StoutPixilizer:
                 "Сохранить изменения?", "У вас есть несохраненные изменения. Сохранить их?"
             )
             if result is None:
-                return  #Отмена
-            if result:  #Да
+                return
+            if result:
                 self.save_image()
-        
+
         self.grid = [[0 for _ in range(self.cols)] for _ in range(self.rows)]
         self.history.clear()
         self.history_index = -1
@@ -267,30 +263,30 @@ class StoutPixilizer:
             self.scale_factor += 0.5
         elif event.delta < 0 and self.scale_factor > 0.5:
             self.scale_factor -= 0.5
-        
+
         mouse_x = event.x
         mouse_y = event.y
-        
+
         scale_ratio = self.scale_factor / old_scale
         self.offset_x = mouse_x - (mouse_x - self.offset_x) * scale_ratio
         self.offset_y = mouse_y - (mouse_y - self.offset_y) * scale_ratio
-        
+
         self.draw_grid()
 
     def start_drag(self, event):
         self.dragging = True
         self.drag_start_x = event.x - self.offset_x
         self.drag_start_y = event.y - self.offset_y
-    
+
     def drag(self, event):
         if self.dragging:
             self.offset_x = event.x - self.drag_start_x
             self.offset_y = event.y - self.drag_start_y
             self.draw_grid()
-    
+
     def stop_drag(self, event):
         self.dragging = False
-    
+
     def clear_canvas(self):
         self.grid = [[0 for _ in range(self.cols)] for _ in range(self.rows)]
         self.save_state()
@@ -301,12 +297,11 @@ class StoutPixilizer:
             #*имя файла, если файл существует и есть несохраненные изменения
             title = f"*{self.file_path.split('/')[-1]} - Stout Pixilizer" if self.file_path else "*New - Stout Pixilizer"
         elif self.file_path:
-            #имя файла, если изменений нет
             title = f"{self.file_path.split('/')[-1]} - Stout Pixilizer"
         else:
             title = "Stout Pixilizer"
         self.root.title(title)
-    
+
     def center_grid(self):
         canvas_width = self.canvas.winfo_width()
         canvas_height = self.canvas.winfo_height()
@@ -314,7 +309,6 @@ class StoutPixilizer:
         grid_width = self.cols * self.cell_size * self.scale_factor
         grid_height = self.rows * self.cell_size * self.scale_factor
 
-        # калькуляция масштаба для вписывания сетки в холст
         scale_x = canvas_width / grid_width
         scale_y = canvas_height / grid_height
         scale = min(scale_x, scale_y)
