@@ -4,11 +4,37 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, PhotoImage
 from PIL import Image, ImageTk
 
+
 def resource_path(relative_path):
     """ Возвращает путь к файлу (учитывает упаковку в .exe) """
     if hasattr(sys, '_MEIPASS'):  #если из .exe
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.join(os.path.abspath(os.path.dirname(__file__)), relative_path)
+
+class ToolTip:
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tip_window = None
+        widget.bind("<Enter>", self.show_tip)
+        widget.bind("<Leave>", self.hide_tip)
+
+    def show_tip(self, event=None):
+        if self.tip_window:
+            return
+        x, y, _, _ = self.widget.bbox("insert")
+        x += self.widget.winfo_rootx() + 25
+        y += self.widget.winfo_rooty() + 25
+        self.tip_window = tw = tk.Toplevel(self.widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f"+{x}+{y}")
+        label = tk.Label(tw, text=self.text, background="yellow", relief="solid", borderwidth=1)
+        label.pack()
+
+    def hide_tip(self, event=None):
+        if self.tip_window:
+            self.tip_window.destroy()
+            self.tip_window = None
 
 class StoutPixilizer:
     def __init__(self, root):
@@ -49,23 +75,30 @@ class StoutPixilizer:
             "ruler": ImageTk.PhotoImage(Image.open(resource_path("assets/toggle_ruler.png")).resize((24, 24))),
         }
 
+        self.buttons = {}
         save_button = tk.Button(button_frame, image=self.icons["save"], command=self.save_image, width=32, height=32, compound=tk.CENTER)
         save_button.pack(side=tk.LEFT, padx=2, pady=5)
+        ToolTip(save_button, "Save")
 
         open_button = tk.Button(button_frame, image=self.icons["open"], command=self.open_image, width=32, height=32, compound=tk.CENTER)
         open_button.pack(side=tk.LEFT, padx=2, pady=5)
+        ToolTip(open_button, "Open")
 
         clear_button = tk.Button(button_frame, image=self.icons["clear"], command=self.clear_canvas, width=32, height=32, compound=tk.CENTER)
         clear_button.pack(side=tk.LEFT, padx=2, pady=5)
+        ToolTip(clear_button, "Clear")
 
         close_button = tk.Button(button_frame, image=self.icons["close"], command=self.close_file, width=32, height=32, compound=tk.CENTER)
         close_button.pack(side=tk.LEFT, padx=2, pady=5)
+        ToolTip(close_button, "Close")
 
         center_button = tk.Button(button_frame, image=self.icons["center"], command=self.center_grid, width=32, height=32, compound=tk.CENTER)
         center_button.pack(side=tk.LEFT, padx=2, pady=5)
+        ToolTip(center_button, "Center")
 
         ruler_button = tk.Button(button_frame, image=self.icons["ruler"], command=self.toggle_ruler, width=32, height=32, compound=tk.CENTER)
         ruler_button.pack(side=tk.LEFT, padx=2, pady=5)
+        ToolTip(ruler_button, "Toggle Ruler")
 
         #Холст, привязки и отступы
         self.canvas_frame = tk.Frame(root)
